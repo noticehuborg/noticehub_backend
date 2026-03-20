@@ -31,19 +31,39 @@ module.exports = (sequelize, DataTypes) => {
       body: {
         type: DataTypes.TEXT,
         allowNull: false,
+        validate: {
+          len: [1, 1000],
+        },
       },
     },
     {
       tableName: 'comments',
       underscored: true,
+      timestamps: true, // ✅ REQUIRED
     }
   );
 
   Comment.associate = (db) => {
-    Comment.belongsTo(db.Announcement, { foreignKey: 'announcement_id', as: 'announcement' });
-    Comment.belongsTo(db.User, { foreignKey: 'author_id', as: 'author' });
-    Comment.belongsTo(db.Comment, { foreignKey: 'parent_id', as: 'parent' });
-    Comment.hasMany(db.Comment, { foreignKey: 'parent_id', as: 'replies' });
+    Comment.belongsTo(db.Announcement, {
+      foreignKey: 'announcement_id',
+      as: 'announcement',
+    });
+
+    Comment.belongsTo(db.User, {
+      foreignKey: 'author_id',
+      as: 'author',
+    });
+
+    Comment.belongsTo(db.Comment, {
+      foreignKey: 'parent_id',
+      as: 'parent',
+    });
+
+    Comment.hasMany(db.Comment, {
+      foreignKey: 'parent_id',
+      as: 'replies',
+      onDelete: 'CASCADE', // ✅ IMPORTANT
+    });
   };
 
   return Comment;

@@ -3,12 +3,23 @@ const express = require('express');
 const cors = require('cors');
 const rateLimit = require('express-rate-limit');
 const errorHandler = require('./middleware/errorHandler');
-
+const commentRoutes = require('./routes/comment.routes');
+const resourceRoutes = require('./routes/resource.routes');
+const levelCorrectionRoutes = require('./routes/levelcorrection.routes');
 const authRoutes = require('./routes/auth.routes');
 const userRoutes = require('./routes/user.routes');
 const adminRoutes = require('./routes/admin.routes');
 
 const app = express();
+
+console.log({
+  authRoutes,
+  userRoutes,
+  levelCorrectionRoutes,
+  resourceRoutes,
+  commentRoutes,
+  adminRoutes
+});
 
 // CORS
 app.use(cors({
@@ -35,6 +46,9 @@ app.get('/health', (req, res) => res.json({ status: 'ok' }));
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
+app.use('/api/users', levelCorrectionRoutes); // level corrections
+app.use('/api/resources', resourceRoutes); // resources
+app.use('/api/comments', commentRoutes); // comments
 app.use('/api/admin', adminRoutes);
 
 // 404

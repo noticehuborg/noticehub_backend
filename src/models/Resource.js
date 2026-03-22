@@ -9,56 +9,81 @@ module.exports = (sequelize, DataTypes) => {
         defaultValue: () => uuidv4(),
         primaryKey: true,
       },
-      author_id: {
-        type: DataTypes.UUID,
-        allowNull: false,
-        references: { model: 'users', key: 'id' },
-        onDelete: 'CASCADE',
-      },
+
+      // remove posted_by
+// add author_id instead
+author_id: {
+  type: DataTypes.UUID,
+  allowNull: false,
+  references: { model: 'users', key: 'id' },
+  onDelete: 'CASCADE',
+},
+
       title: {
         type: DataTypes.STRING(255),
         allowNull: false,
       },
+
       description: {
         type: DataTypes.TEXT,
         allowNull: true,
       },
+
       type: {
-        type: DataTypes.ENUM('telegram', 'google_drive', 'youtube', 'file'),
+        type: DataTypes.ENUM('telegram', 'drive', 'youtube', 'file'),
         allowNull: false,
       },
+
       url: {
         type: DataTypes.TEXT,
         allowNull: true,
-        comment: 'For link-type resources',
       },
+
       file_url: {
         type: DataTypes.TEXT,
         allowNull: true,
-        comment: 'For file-type resources (Cloudinary URL)',
       },
+
+      file_name: {
+        type: DataTypes.STRING(255),
+        allowNull: true,
+      },
+
+      file_size_bytes: {
+        type: DataTypes.BIGINT,
+        allowNull: true,
+      },
+
       public_id: {
         type: DataTypes.STRING(255),
         allowNull: true,
-        comment: 'Cloudinary public_id for deletion',
       },
+
       program: {
-        type: DataTypes.ENUM('Bsc. Computer Science', 'Bsc. Information Technology'),
-        allowNull: false,
+        type: DataTypes.ENUM(
+          'Bsc. Computer Science',
+          'Bsc. Information Technology'
+        ),
+        allowNull: true,
       },
+
       level: {
-        type: DataTypes.ENUM('100', '200', '300', '400'),
-        allowNull: false,
+        type: DataTypes.INTEGER,
+        allowNull: true, // NULL = all levels
       },
     },
     {
       tableName: 'resources',
       underscored: true,
+      timestamps: true, // ✅ REQUIRED
     }
   );
 
   Resource.associate = (db) => {
-    Resource.belongsTo(db.User, { foreignKey: 'author_id', as: 'author' });
+    Resource.belongsTo(db.User, {
+      foreignKey: 'author_id',
+      as: 'author',
+    });
   };
 
   return Resource;

@@ -1,27 +1,24 @@
-// controllers/comment.controller.js
-import db from '../models/index.js';
+const { Comment, User, Announcement } = require('../models');
+const notificationService = require('../services/notification.service');
+const { success, error } = require('../utils/response');
 
-const { Comment, User, Notification } = db;
-
-// 🔹 helper: sanitize input
 const sanitize = (text) => {
   if (!text) return '';
   return text.replace(/<[^>]*>/g, '').slice(0, 1000);
 };
 
-// 🔹 helper: build threaded tree
 const buildTree = (comments) => {
   const map = {};
   const tree = [];
 
-  comments.forEach(c => {
+  comments.forEach((c) => {
     c.replies = [];
     map[c.id] = c;
   });
 
-  comments.forEach(c => {
+  comments.forEach((c) => {
     if (c.parent_id) {
-      map[c.parent_id]?.replies.push(c);
+      if (map[c.parent_id]) map[c.parent_id].replies.push(c);
     } else {
       tree.push(c);
     }
@@ -30,129 +27,109 @@ const buildTree = (comments) => {
   return tree;
 };
 
-// ✅ GET threaded comments
-export const getComments = async (req, res, next) => {
+// GET /announcements/:id/comments
+exports.getComments = async (req, res, next) => {
   try {
-    const { id } = req.params;
-
     const comments = await Comment.findAll({
-      where: { announcement_id: id },
-      include: [{
-        model: User,
-        as: 'author',
-        attributes: ['id', 'full_name']
-      }],
-      order: [['created_at', 'ASC']]
+      where: { announcement_id: req.params.id },
+      include: [{ model: User, as: 'author', attributes: ['id', 'full_name', 'avatar_url'] }],
+      order: [['created_at', 'ASC']],
     });
 
-    const plain = comments.map(c => c.toJSON());
-    const tree = buildTree(plain);
-
-    res.json({ success: true, data: tree });
+    const tree = buildTree(comments.map((c) => c.toJSON()));
+    return success(res, tree);
   } catch (err) {
     next(err);
   }
 };
 
-// ✅ POST top-level comment
-export const createComment = async (req, res, next) => {
+// POST /announcements/:id/comments
+exports.createComment = async (req, res, next) => {
   try {
-    const { id } = req.params;
-    let { body, content } = req.body;
+    const body = sanitize(req.body.body || req.body.content);
+    if (!body) return error(res, 'Comment body is required', 400);
 
-    body = sanitize(body || content);
-
-    if (!body) return res.status(400).json({ success: false, message: 'Content is required' });
+    const announcement = await Announcement.findByPk(req.params.id);
+    if (!announcement) return error(res, 'Announcement not found', 404);
 
     const comment = await Comment.create({
-      announcement_id: id,
+      announcement_id: req.params.id,
       author_id: req.user.id,
       parent_id: null,
-      body
+      body,
     });
 
-    res.status(201).json({ success: true, data: comment });
+    const withAuthor = await Comment.findByPk(comment.id, {
+      include: [{ model: User, as: 'author', attributes: ['id', 'full_name', 'avatar_url'] }],
+    });
+
+    return success(res, withAuthor, 'Comment posted', 201);
   } catch (err) {
     next(err);
   }
 };
 
-// ✅ POST reply
-export const replyToComment = async (req, res, next) => {
+// POST /comments/:id/reply
+exports.replyToComment = async (req, res, next) => {
   try {
-    const { id } = req.params;
-    let { body, content } = req.body;
+    const parent = await Comment.findByPk(req.params.id);
+    if (!parent) return error(res, 'Parent comment not found', 404);
 
-    const parent = await Comment.findByPk(id);
-    if (!parent) return res.status(404).json({ success: false, message: 'Parent comment not found' });
-
-    body = sanitize(body || content);
-    if (!body) return res.status(400).json({ success: false, message: 'Content is required' });
+    const body = sanitize(req.body.body || req.body.content);
+    if (!body) return error(res, 'Reply body is required', 400);
 
     const reply = await Comment.create({
       announcement_id: parent.announcement_id,
       author_id: req.user.id,
       parent_id: parent.id,
-      body
+      body,
     });
 
-    // 🔔 notify parent author
-    if (parent.author_id !== req.user.id) {
-      await Notification.create({
-        user_id: parent.author_id,
-        type: 'comment_reply',
-        title: 'New reply',
-        body: 'Someone replied to your comment',
-        related_id: parent.id
-      });
-    }
+    notificationService.notifyReply(parent, req.user);
 
-    res.status(201).json({ success: true, data: reply });
+    const withAuthor = await Comment.findByPk(reply.id, {
+      include: [{ model: User, as: 'author', attributes: ['id', 'full_name', 'avatar_url'] }],
+    });
+
+    return success(res, withAuthor, 'Reply posted', 201);
   } catch (err) {
     next(err);
   }
 };
 
-// ✅ PATCH comment
-export const updateComment = async (req, res, next) => {
+// PATCH /comments/:id
+exports.updateComment = async (req, res, next) => {
   try {
-    const { id } = req.params;
-    let { body, content } = req.body;
+    const comment = await Comment.findByPk(req.params.id);
+    if (!comment) return error(res, 'Comment not found', 404);
+    if (comment.author_id !== req.user.id) return error(res, 'Forbidden', 403);
 
-    const comment = await Comment.findByPk(id);
-    if (!comment) return res.status(404).json({ success: false, message: 'Comment not found' });
+    const body = sanitize(req.body.body || req.body.content);
+    if (!body) return error(res, 'Comment body is required', 400);
 
-    if (comment.author_id !== req.user.id) {
-      return res.status(403).json({ success: false, message: 'Not allowed to edit this comment' });
-    }
-
-    comment.body = sanitize(body || content);
+    comment.body = body;
     await comment.save();
 
-    res.json({ success: true, data: comment });
+    return success(res, comment, 'Comment updated');
   } catch (err) {
     next(err);
   }
 };
 
-// ✅ DELETE comment (with replies)
-export const deleteComment = async (req, res, next) => {
+// DELETE /comments/:id
+exports.deleteComment = async (req, res, next) => {
   try {
-    const { id } = req.params;
+    const comment = await Comment.findByPk(req.params.id);
+    if (!comment) return error(res, 'Comment not found', 404);
 
-    const comment = await Comment.findByPk(id);
-    if (!comment) return res.status(404).json({ success: false, message: 'Comment not found' });
+    const isAuthor = comment.author_id === req.user.id;
+    const isAdmin = req.user.role === 'admin';
+    if (!isAuthor && !isAdmin) return error(res, 'Forbidden', 403);
 
-    if (comment.author_id !== req.user.id && req.user.role !== 'admin') {
-      return res.status(403).json({ success: false, message: 'Not allowed to delete this comment' });
-    }
-
-    // delete children first (safe)
-    await Comment.destroy({ where: { parent_id: id } });
-
+    await Comment.destroy({ where: { parent_id: comment.id } });
     await comment.destroy();
 
-    res.json({ success: true, message: 'Comment deleted successfully' });
+    return success(res, null, 'Comment deleted');
   } catch (err) {
     next(err);
   }

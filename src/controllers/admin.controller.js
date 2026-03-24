@@ -1,8 +1,9 @@
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
-const { User, Announcement, LevelCorrectionRequest } = require('../models');
+const { User, Announcement, Attachment, Comment, AnnouncementView, LevelCorrectionRequest } = require('../models');
 const { success, error } = require('../utils/response');
 const emailService = require('../services/email.service');
+const { deleteFile } = require('../services/file.service');
 
 const SAFE_ATTRIBUTES = {
   exclude: ['password_hash', 'refresh_token_hash', 'otp_code', 'otp_expires_at', 'password_reset_token', 'password_reset_expires_at'],
@@ -48,13 +49,14 @@ exports.createRep = async (req, res, next) => {
 // GET /admin/stats
 exports.getStats = async (req, res, next) => {
   try {
-    const [totalUsers, totalAnnouncements, pendingCorrections] = await Promise.all([
+    const [totalUsers, totalAnnouncements, totalComments, totalViews] = await Promise.all([
       User.count({ where: { is_active: true } }),
       Announcement.count(),
-      LevelCorrectionRequest.count({ where: { status: 'pending' } }),
+      Comment.count(),
+      AnnouncementView.count(),
     ]);
 
-    return success(res, { totalUsers, totalAnnouncements, pendingCorrections });
+    return success(res, { totalUsers, totalAnnouncements, totalComments, totalViews });
   } catch (err) {
     next(err);
   }
@@ -102,7 +104,10 @@ exports.actionLevelCorrection = async (req, res, next) => {
     await request.save();
 
     if (status === 'approved') {
-      await request.user.update({ level: request.requested_level });
+      await request.user.update({
+        level: String(request.requested_level),
+        level_updated_at: new Date(), // restart 12-month progression clock
+      });
     }
 
     return success(res, { request }, `Level correction ${status}`);
@@ -111,25 +116,35 @@ exports.actionLevelCorrection = async (req, res, next) => {
   }
 };
 
-// PATCH /admin/users/:id/deactivate
+// PATCH /admin/users/:id/deactivate  — toggles active/inactive
 exports.deactivateUser = async (req, res, next) => {
   try {
     const user = await User.findByPk(req.params.id);
     if (!user) return error(res, 'User not found', 404);
 
-    user.is_active = false;
+    user.is_active = !user.is_active;
     await user.save();
-    return success(res, null, 'User deactivated');
+    return success(res, null, user.is_active ? 'User reactivated' : 'User deactivated');
   } catch (err) {
     next(err);
   }
 };
 
-// DELETE /admin/announcements/:id  — stub (actual implementation belongs to Dev 2)
+// DELETE /admin/announcements/:id  — force-delete with CDN cleanup
 exports.deleteAnnouncement = async (req, res, next) => {
   try {
-    const announcement = await Announcement.findByPk(req.params.id);
+    const announcement = await Announcement.findByPk(req.params.id, {
+      include: [{ model: Attachment, as: 'attachments' }],
+    });
     if (!announcement) return error(res, 'Announcement not found', 404);
+
+    // Delete all attachments from Cloudinary before removing DB record
+    await Promise.allSettled(
+      announcement.attachments
+        .filter((a) => a.public_id)
+        .map((a) => deleteFile(a.public_id))
+    );
+
     await announcement.destroy();
     return success(res, null, 'Announcement deleted');
   } catch (err) {

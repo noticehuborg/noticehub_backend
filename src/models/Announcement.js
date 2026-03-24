@@ -36,9 +36,18 @@ module.exports = (sequelize, DataTypes) => {
         type: DataTypes.ENUM('100', '200', '300', '400'),
         allowNull: false,
       },
+      status: {
+        type: DataTypes.ENUM('draft', 'published', 'archived'),
+        allowNull: false,
+        defaultValue: 'draft',
+      },
       is_pinned: {
         type: DataTypes.BOOLEAN,
         defaultValue: false,
+      },
+      pinned_at: {
+        type: DataTypes.DATE,
+        allowNull: true,
       },
       deadline: {
         type: DataTypes.DATE,

@@ -9,6 +9,8 @@ const levelCorrectionRoutes = require('./routes/levelcorrection.routes');
 const authRoutes = require('./routes/auth.routes');
 const userRoutes = require('./routes/user.routes');
 const adminRoutes = require('./routes/admin.routes');
+const notificationRoutes = require('./routes/notification.routes');
+const announcementRoutes = require('./routes/announcement.routes');
 
 const app = express();
 
@@ -48,8 +50,10 @@ app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/users', levelCorrectionRoutes); // level corrections
 app.use('/api/resources', resourceRoutes); // resources
-app.use('/api/comments', commentRoutes); // comments
+app.use('/api', commentRoutes); // comments — spans /announcements/:id/comments and /comments/:id
 app.use('/api/admin', adminRoutes);
+app.use('/api/notifications', notificationRoutes);
+app.use('/api/announcements', announcementRoutes);
 
 // 404
 app.use((req, res) => res.status(404).json({ status: 'error', message: 'Route not found' }));

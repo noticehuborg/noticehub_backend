@@ -6,6 +6,8 @@ const { success, error } = require('../utils/response');
 const emailService = require('../services/email.service');
 const jwtConfig = require('../config/jwt');
 
+const notificationService = require('../services/notification.service');
+
 const generateOtp = () => Math.floor(1000 + Math.random() * 9000).toString();
 
 const signTokens = (userId) => {
@@ -28,9 +30,9 @@ exports.register = async (req, res, next) => {
 
     const password_hash = await bcrypt.hash(password, 12);
     const otp_code = generateOtp();
-    const otp_expires_at = new Date(Date.now() + 10 * 60 * 1000); // 10 min
+    const otp_expires_at = new Date(Date.now() + 15 * 60 * 1000); // 15 min
 
-    await User.create({
+    const user = await User.create({
       full_name,
       email,
       password_hash,
@@ -39,6 +41,7 @@ exports.register = async (req, res, next) => {
       level,
       otp_code,
       otp_expires_at,
+      level_updated_at: new Date(), // starts the 12-month progression clock
     });
 
     // In dev, log OTP to console so you can test without SMTP configured
@@ -50,6 +53,9 @@ exports.register = async (req, res, next) => {
     emailService.sendOtp(email, otp_code).catch((err) => {
       console.error('[Email] Failed to send OTP:', err.message);
     });
+
+    // Send welcome notification non-blocking
+    notificationService.notifyWelcome(user.id);
 
     return success(res, null, 'Registration successful. Check your email for the OTP.', 201);
   } catch (err) {
@@ -185,6 +191,7 @@ exports.resetPassword = async (req, res, next) => {
     user.password_hash = await bcrypt.hash(password, 12);
     user.password_reset_token = null;
     user.password_reset_expires_at = null;
+    user.refresh_token_hash = null; // invalidate any active session
     await user.save();
 
     return success(res, null, 'Password reset successful');
@@ -197,13 +204,17 @@ exports.resetPassword = async (req, res, next) => {
 exports.newPassword = async (req, res, next) => {
   try {
     const { password } = req.body;
-    const user = req.user;
+    const user = await User.findByPk(req.user.id);
 
     user.password_hash = await bcrypt.hash(password, 12);
     user.must_reset_password = false;
+    user.refresh_token_hash = null; // invalidate old temp session
+
+    const { accessToken, refreshToken } = signTokens(user.id);
+    user.refresh_token_hash = await bcrypt.hash(refreshToken, 10);
     await user.save();
 
-    return success(res, null, 'Password updated successfully');
+    return success(res, { access_token: accessToken, refresh_token: refreshToken }, 'Password updated successfully');
   } catch (err) {
     next(err);
   }

@@ -16,7 +16,7 @@ module.exports = (sequelize, DataTypes) => {
         onDelete: 'CASCADE',
       },
       type: {
-        type: DataTypes.ENUM('new_announcement', 'deadline_warning', 'comment_reply'),
+        type: DataTypes.ENUM('new_announcement', 'deadline_warning', 'comment_reply', 'welcome', 'level_progressed'),
         allowNull: false,
       },
       title: {

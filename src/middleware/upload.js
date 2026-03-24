@@ -1,19 +1,26 @@
 const multer = require('multer');
-const path = require('path');
-const fs = require('fs');
 
-const uploadDir = path.join(__dirname, '../uploads');
+const ALLOWED_MIME_TYPES = [
+  'application/pdf',
+  'image/jpeg',
+  'image/png',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // .docx
+];
 
-// Make sure uploads folder exists
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir);
-}
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, uploadDir),
-  filename: (req, file, cb) => cb(null, Date.now() + path.extname(file.originalname))
+const fileFilter = (req, file, cb) => {
+  if (ALLOWED_MIME_TYPES.includes(file.mimetype)) {
+    cb(null, true);
+  } else {
+    cb(new Error('Invalid file type. Only PDF, JPG, PNG, and DOCX are allowed.'), false);
+  }
+};
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MAX_FILE_SIZE },
+  fileFilter,
 });
-
-const upload = multer({ storage });
 
 module.exports = upload;

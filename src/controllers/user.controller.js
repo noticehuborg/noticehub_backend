@@ -94,6 +94,18 @@ exports.requestLevelCorrection = async (req, res, next) => {
   }
 };
 
+// DELETE /users/me
+exports.deleteMe = async (req, res, next) => {
+  try {
+    const user = await User.findByPk(req.user.id);
+    if (!user) return error(res, 'User not found', 404);
+    await user.destroy();
+    return success(res, null, 'Account deleted successfully');
+  } catch (err) {
+    next(err);
+  }
+};
+
 // GET /users  (admin)
 exports.listUsers = async (req, res, next) => {
   try {

@@ -13,6 +13,7 @@ router.use(authenticate);
 router.get('/me', userController.getMe);
 router.patch('/me', upload.single('avatar'), validate(v.updateMe), userController.updateMe);
 router.patch('/me/password', validate(v.changePassword), userController.changePassword);
+router.delete('/me', userController.deleteMe);
 router.post('/me/level-correction', validate(v.levelCorrectionRequest), userController.requestLevelCorrection);
 
 // Lecturer course assignments

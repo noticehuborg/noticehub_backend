@@ -1,52 +1,46 @@
-const nodemailer = require('nodemailer');
-const dns = require('dns');
+/**
+ * Email service — powered by Brevo (formerly Sendinblue) HTTP API.
+ * Uses Node's built-in fetch (Node 18+) so no extra dependencies needed.
+ * Works on any hosting platform including Render (port 443, not SMTP).
+ */
 
-// Force Node.js to use Google's public DNS instead of the ISP's DNS,
-// which may block SMTP-related hostname lookups.
-dns.setServers(['8.8.8.8', '8.8.4.4', '1.1.1.1']);
-
-const createTransporter = () => {
-  const port = parseInt(process.env.SMTP_PORT, 10) || 465;
-  return nodemailer.createTransport({
-    host: process.env.SMTP_HOST,
-    port,
-    // port 465 = implicit SSL; port 587 = STARTTLS (secure: false + requireTLS: true)
-    secure: port === 465,
-    auth: {
-      user: process.env.SMTP_USER,
-      // Strip spaces — Gmail displays app passwords with spaces but SMTP needs the raw 16 chars
-      pass: (process.env.SMTP_PASS || '').replace(/\s/g, ''),
-    },
-    ...(port === 587 && { requireTLS: true }),
-    pool: false,
-    connectionTimeout: 10000,
-  });
-};
-
-const DEFAULT_FROM = '"NoticeHub" <noreply@noticehub.app>';
+const BREVO_API = 'https://api.brevo.com/v3/smtp/email';
 
 const send = async ({ to, subject, html }) => {
-  const transporter = createTransporter();
-  try {
-    await transporter.sendMail({
-      from: process.env.EMAIL_FROM || DEFAULT_FROM,
-      to,
-      subject,
-      html,
-    });
-    console.log('[email] Sent "%s" to %s', subject, to);
-  } catch (err) {
-    console.error('[email] FAILED to send "%s" to %s — %s', subject, to, err.message);
-    console.error('[email] SMTP config: host=%s port=%s user=%s passLength=%d',
-      process.env.SMTP_HOST || 'NOT SET',
-      process.env.SMTP_PORT || 'NOT SET',
-      process.env.SMTP_USER || 'NOT SET',
-      (process.env.SMTP_PASS || '').replace(/\s/g, '').length
-    );
-    throw err;
-  } finally {
-    transporter.close();
+  const apiKey = process.env.BREVO_API_KEY;
+  const senderEmail = process.env.BREVO_SENDER_EMAIL || process.env.SMTP_USER;
+  const senderName = process.env.BREVO_SENDER_NAME || 'NoticeHub';
+
+  if (!apiKey) {
+    console.error('[email] BREVO_API_KEY is not set — cannot send email');
+    throw new Error('Email service not configured');
   }
+
+  const body = {
+    sender: { name: senderName, email: senderEmail },
+    to: [{ email: to }],
+    subject,
+    htmlContent: html,
+  };
+
+  const res = await fetch(BREVO_API, {
+    method: 'POST',
+    headers: {
+      'api-key': apiKey,
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!res.ok) {
+    const errBody = await res.json().catch(() => ({}));
+    const msg = errBody?.message || `HTTP ${res.status}`;
+    console.error('[email] Brevo error sending "%s" to %s — %s', subject, to, msg);
+    throw new Error(msg);
+  }
+
+  console.log('[email] Sent "%s" to %s', subject, to);
 };
 
 const sendOtp = async (email, otp) => {
@@ -103,4 +97,35 @@ const sendLecturerCredentials = async (email, fullName, tempPassword) => {
   });
 };
 
-module.exports = { sendOtp, sendPasswordReset, sendRepCredentials, sendLecturerCredentials };
+const sendContactForm = async ({ name, email, program, level, messageType, subject, message }) => {
+  const adminEmail = process.env.ADMIN_EMAIL;
+  if (!adminEmail) {
+    console.error('[email] ADMIN_EMAIL is not set — cannot forward contact form');
+    throw new Error('Admin email not configured');
+  }
+  await send({
+    to: adminEmail,
+    subject: `[NoticeHub Contact] ${subject}`,
+    html: `
+      <h2>New Contact Form Submission</h2>
+      <table cellpadding="6" style="border-collapse:collapse">
+        <tr><td><strong>Name</strong></td><td>${name}</td></tr>
+        <tr><td><strong>Email</strong></td><td>${email}</td></tr>
+        <tr><td><strong>Program</strong></td><td>${program || '—'}</td></tr>
+        <tr><td><strong>Level</strong></td><td>${level || '—'}</td></tr>
+        <tr><td><strong>Type</strong></td><td>${messageType || '—'}</td></tr>
+        <tr><td><strong>Subject</strong></td><td>${subject}</td></tr>
+      </table>
+      <hr />
+      <p style="white-space:pre-line">${message}</p>
+    `,
+  });
+};
+
+module.exports = {
+  sendOtp,
+  sendPasswordReset,
+  sendRepCredentials,
+  sendLecturerCredentials,
+  sendContactForm,
+};

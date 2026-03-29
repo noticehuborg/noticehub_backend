@@ -13,6 +13,7 @@ const adminRoutes = require('./routes/admin.routes');
 const notificationRoutes = require('./routes/notification.routes');
 const announcementRoutes = require('./routes/announcement.routes');
 const fileRoutes = require('./routes/file.routes');
+const contactRoutes = require('./routes/contact.routes');
 
 const app = express();
 
@@ -68,6 +69,7 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/announcements', announcementRoutes);
 app.use('/api/files', fileRoutes);
+app.use('/api/contact', contactRoutes);
 
 // 404
 app.use((req, res) => res.status(404).json({ status: 'error', message: 'Route not found' }));

@@ -223,13 +223,12 @@ exports.forgotPassword = async (req, res, next) => {
 
     const resetUrl = `${process.env.FRONTEND_URL}/reset-password?token=${resetToken}`;
 
-    if (process.env.NODE_ENV !== 'production') {
-      console.log(`[DEV] Password reset URL for ${email}: ${resetUrl}`);
-    }
+    console.log(`[auth] Password reset URL for ${email}: ${resetUrl}`);
+
     try {
       await emailService.sendPasswordReset(email, resetUrl);
     } catch (emailErr) {
-      console.error('[Email] Failed to send password reset:', emailErr.message);
+      console.error('[auth] Failed to send password reset email to', email, '—', emailErr.message);
       // Still return 200 — don't reveal whether the email exists or SMTP is broken
     }
 

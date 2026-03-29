@@ -37,6 +37,12 @@ const send = async ({ to, subject, html }) => {
     console.log('[email] Sent "%s" to %s', subject, to);
   } catch (err) {
     console.error('[email] FAILED to send "%s" to %s — %s', subject, to, err.message);
+    console.error('[email] SMTP config: host=%s port=%s user=%s passLength=%d',
+      process.env.SMTP_HOST || 'NOT SET',
+      process.env.SMTP_PORT || 'NOT SET',
+      process.env.SMTP_USER || 'NOT SET',
+      (process.env.SMTP_PASS || '').replace(/\s/g, '').length
+    );
     throw err;
   } finally {
     transporter.close();

@@ -40,6 +40,7 @@ const withCommentCount = async (announcement) => {
 
 const getDeadlines = async (req, res, next) => {
   try {
+    if (req.user.role === 'lecturer') return error(res, 'Lecturers do not have access to deadlines.', 403);
     const { page = 1, limit = 20 } = req.query;
     const offset = (parseInt(page) - 1) * parseInt(limit);
 
@@ -74,6 +75,7 @@ const getDeadlines = async (req, res, next) => {
 
 const getFeed = async (req, res, next) => {
   try {
+    if (req.user.role === 'lecturer') return error(res, 'Lecturers do not have access to the announcement feed.', 403);
     const { page = 1, limit = 20 } = req.query;
     const offset = (parseInt(page) - 1) * parseInt(limit);
 
@@ -112,6 +114,7 @@ const getFeed = async (req, res, next) => {
 
 const searchAnnouncements = async (req, res, next) => {
   try {
+    if (req.user.role === 'lecturer') return error(res, 'Lecturers do not have access to the announcement feed.', 403);
     const { search, category, sort = 'newest', page = 1, limit = 20 } = req.query;
     const offset = (parseInt(page) - 1) * parseInt(limit);
 

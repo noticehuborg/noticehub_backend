@@ -1,51 +1,21 @@
-const nodemailer = require('nodemailer');
-const dns = require('dns');
+const { Resend } = require('resend');
 
-// Force Node.js to use Google's public DNS instead of the ISP's DNS,
-// which may block SMTP-related hostname lookups.
-dns.setServers(['8.8.8.8', '8.8.4.4', '1.1.1.1']);
+const resend = new Resend(process.env.RESEND_API_KEY);
 
-const createTransporter = () => {
-  const port = parseInt(process.env.SMTP_PORT, 10) || 465;
-  return nodemailer.createTransport({
-    host: process.env.SMTP_HOST,
-    port,
-    // port 465 = implicit SSL; port 587 = STARTTLS (secure: false + requireTLS: true)
-    secure: port === 465,
-    auth: {
-      user: process.env.SMTP_USER,
-      // Strip spaces — Gmail displays app passwords with spaces but SMTP needs the raw 16 chars
-      pass: (process.env.SMTP_PASS || '').replace(/\s/g, ''),
-    },
-    ...(port === 587 && { requireTLS: true }),
-    pool: false,
-    connectionTimeout: 10000,
-  });
-};
-
-const DEFAULT_FROM = '"NoticeHub" <noreply@noticehub.app>';
+const DEFAULT_FROM = 'NoticeHub <onboarding@resend.dev>';
 
 const send = async ({ to, subject, html }) => {
-  const transporter = createTransporter();
+  const from = process.env.EMAIL_FROM || DEFAULT_FROM;
   try {
-    await transporter.sendMail({
-      from: process.env.EMAIL_FROM || DEFAULT_FROM,
-      to,
-      subject,
-      html,
-    });
-    console.log('[email] Sent "%s" to %s', subject, to);
+    const { data, error } = await resend.emails.send({ from, to, subject, html });
+    if (error) {
+      console.error('[email] Resend error sending "%s" to %s —', subject, to, error);
+      throw new Error(error.message || 'Resend API error');
+    }
+    console.log('[email] Sent "%s" to %s (id: %s)', subject, to, data?.id);
   } catch (err) {
     console.error('[email] FAILED to send "%s" to %s — %s', subject, to, err.message);
-    console.error('[email] SMTP config: host=%s port=%s user=%s passLength=%d',
-      process.env.SMTP_HOST || 'NOT SET',
-      process.env.SMTP_PORT || 'NOT SET',
-      process.env.SMTP_USER || 'NOT SET',
-      (process.env.SMTP_PASS || '').replace(/\s/g, '').length
-    );
     throw err;
-  } finally {
-    transporter.close();
   }
 };
 

@@ -1,8 +1,8 @@
-const { v4: uuidv4 } = require('uuid');
+const { v4: uuidv4 } = require("uuid");
 
 module.exports = (sequelize, DataTypes) => {
   const Resource = sequelize.define(
-    'Resource',
+    "Resource",
     {
       id: {
         type: DataTypes.UUID,
@@ -11,13 +11,13 @@ module.exports = (sequelize, DataTypes) => {
       },
 
       // remove posted_by
-// add author_id instead
-author_id: {
-  type: DataTypes.UUID,
-  allowNull: false,
-  references: { model: 'users', key: 'id' },
-  onDelete: 'CASCADE',
-},
+      // add author_id instead
+      author_id: {
+        type: DataTypes.UUID,
+        allowNull: false,
+        references: { model: "users", key: "id" },
+        onDelete: "CASCADE",
+      },
 
       title: {
         type: DataTypes.STRING(255),
@@ -30,7 +30,7 @@ author_id: {
       },
 
       type: {
-        type: DataTypes.ENUM('telegram', 'drive', 'youtube', 'file'),
+        type: DataTypes.ENUM("telegram", "drive", "youtube", "file"),
         allowNull: false,
       },
 
@@ -61,8 +61,8 @@ author_id: {
 
       program: {
         type: DataTypes.ENUM(
-          'Bsc. Computer Science',
-          'Bsc. Information Technology'
+          "Bsc. Computer Science",
+          "Bsc. Information Technology",
         ),
         allowNull: true,
       },
@@ -73,16 +73,16 @@ author_id: {
       },
     },
     {
-      tableName: 'resources',
+      tableName: "resources",
       underscored: true,
       timestamps: true, // ✅ REQUIRED
-    }
+    },
   );
 
   Resource.associate = (db) => {
     Resource.belongsTo(db.User, {
-      foreignKey: 'author_id',
-      as: 'author',
+      foreignKey: "author_id",
+      as: "author",
     });
   };
 

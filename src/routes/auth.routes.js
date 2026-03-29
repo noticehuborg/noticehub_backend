@@ -4,6 +4,7 @@ const validate = require('../middleware/validate');
 const authenticate = require('../middleware/authenticate');
 const v = require('../utils/validators/auth.validator');
 
+router.get('/programs', authController.getPrograms);
 router.post('/register', validate(v.register), authController.register);
 router.post('/login', validate(v.login), authController.login);
 router.post('/verify-otp', validate(v.verifyOtp), authController.verifyOtp);

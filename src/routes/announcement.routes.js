@@ -10,6 +10,7 @@ const {
   querySchema,
 } = require('../utils/validators/announcement.validator');
 const {
+  getDeadlines,
   getFeed,
   searchAnnouncements,
   getMyPosts,
@@ -19,21 +20,24 @@ const {
   publishAnnouncement,
   togglePin,
   deleteAnnouncement,
+  getAttachments,
 } = require('../controllers/announcement.controller');
 
 router.use(authenticate);
 
 // Static paths must come BEFORE /:id to avoid route conflicts
+router.get('/deadlines', getDeadlines);
 router.get('/search', searchAnnouncements);
 router.get('/my-posts', getMyPosts);
+router.get('/attachments', getAttachments);
 
 router.get('/', getFeed);
-router.post('/', authorize('course_rep', 'admin'), upload.array('attachments', 5), createAnnouncement);
+router.post('/', authorize('course_rep', 'lecturer', 'admin'), upload.array('attachments', 5), createAnnouncement);
 
 router.get('/:id', getAnnouncement);
-router.patch('/:id', authorize('course_rep', 'admin'), upload.array('attachments', 5), updateAnnouncement);
-router.patch('/:id/publish', authorize('course_rep', 'admin'), publishAnnouncement);
-router.patch('/:id/pin', authorize('course_rep', 'admin'), togglePin);
-router.delete('/:id', authorize('course_rep', 'admin'), deleteAnnouncement);
+router.patch('/:id', authorize('course_rep', 'lecturer', 'admin'), upload.array('attachments', 5), updateAnnouncement);
+router.patch('/:id/publish', authorize('course_rep', 'lecturer', 'admin'), publishAnnouncement);
+router.patch('/:id/pin', authorize('course_rep', 'lecturer', 'admin'), togglePin);
+router.delete('/:id', authorize('course_rep', 'lecturer', 'admin'), deleteAnnouncement);
 
 module.exports = router;

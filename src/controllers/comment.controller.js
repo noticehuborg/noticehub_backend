@@ -32,7 +32,7 @@ exports.getComments = async (req, res, next) => {
   try {
     const comments = await Comment.findAll({
       where: { announcement_id: req.params.id },
-      include: [{ model: User, as: 'author', attributes: ['id', 'full_name', 'avatar_url'] }],
+      include: [{ model: User, as: 'author', attributes: ['id', 'full_name', 'avatar_url', 'role'] }],
       order: [['created_at', 'ASC']],
     });
 
@@ -60,8 +60,11 @@ exports.createComment = async (req, res, next) => {
     });
 
     const withAuthor = await Comment.findByPk(comment.id, {
-      include: [{ model: User, as: 'author', attributes: ['id', 'full_name', 'avatar_url'] }],
+      include: [{ model: User, as: 'author', attributes: ['id', 'full_name', 'avatar_url', 'role'] }],
     });
+
+    // Notify the announcement author of the new comment (non-blocking)
+    notificationService.notifyNewComment(announcement, req.user);
 
     return success(res, withAuthor, 'Comment posted', 201);
   } catch (err) {
@@ -88,7 +91,7 @@ exports.replyToComment = async (req, res, next) => {
     notificationService.notifyReply(parent, req.user);
 
     const withAuthor = await Comment.findByPk(reply.id, {
-      include: [{ model: User, as: 'author', attributes: ['id', 'full_name', 'avatar_url'] }],
+      include: [{ model: User, as: 'author', attributes: ['id', 'full_name', 'avatar_url', 'role'] }],
     });
 
     return success(res, withAuthor, 'Reply posted', 201);

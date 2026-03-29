@@ -1,5 +1,6 @@
 const bcrypt = require('bcryptjs');
-const { User, LevelCorrectionRequest } = require('../models');
+const crypto = require('crypto');
+const { User, LevelCorrectionRequest, Course, LecturerCourse } = require('../models');
 const { success, error } = require('../utils/response');
 const { uploadToCloudinary, deleteFromCloudinary } = require('../services/upload.service');
 const { Op } = require('sequelize');
@@ -11,7 +12,10 @@ const SAFE_ATTRIBUTES = {
 // GET /users/me
 exports.getMe = async (req, res, next) => {
   try {
-    const user = await User.findByPk(req.user.id, { attributes: SAFE_ATTRIBUTES });
+    const include = req.user.role === 'lecturer'
+      ? [{ model: Course, as: 'courses', through: { attributes: [] }, where: { is_active: true }, required: false }]
+      : [];
+    const user = await User.findByPk(req.user.id, { attributes: SAFE_ATTRIBUTES, include });
     return success(res, { user });
   } catch (err) {
     next(err);
@@ -159,6 +163,65 @@ exports.deactivateUser = async (req, res, next) => {
     user.is_active = false;
     await user.save();
     return success(res, null, 'User deactivated');
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ─── Lecturer Course Assignments ──────────────────────────────────────────────
+
+// GET /users/me/courses
+exports.getMyCourses = async (req, res, next) => {
+  try {
+    if (req.user.role !== 'lecturer') {
+      return error(res, 'Only lecturers have course assignments', 403);
+    }
+    const user = await User.findByPk(req.user.id, {
+      include: [{ model: Course, as: 'courses', through: { attributes: [] } }],
+    });
+    return success(res, { courses: user.courses });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// POST /users/me/courses  — assign an existing course to the lecturer
+// Body: { course_id: "<uuid>" }
+exports.addMyCourse = async (req, res, next) => {
+  try {
+    if (req.user.role !== 'lecturer') {
+      return error(res, 'Only lecturers can be assigned courses', 403);
+    }
+    const { course_id } = req.body;
+    if (!course_id) return error(res, 'course_id is required', 400);
+
+    const course = await Course.findByPk(course_id);
+    if (!course || !course.is_active) return error(res, 'Course not found', 404);
+
+    const [, created] = await LecturerCourse.findOrCreate({
+      where: { lecturer_id: req.user.id, course_id },
+      defaults: { id: crypto.randomUUID(), lecturer_id: req.user.id, course_id },
+    });
+
+    if (!created) return error(res, 'Course already assigned', 409);
+
+    return success(res, { course }, 'Course assigned', 201);
+  } catch (err) {
+    next(err);
+  }
+};
+
+// DELETE /users/me/courses/:courseId  — remove a course assignment
+exports.removeMyCourse = async (req, res, next) => {
+  try {
+    if (req.user.role !== 'lecturer') {
+      return error(res, 'Only lecturers have course assignments', 403);
+    }
+    const deleted = await LecturerCourse.destroy({
+      where: { lecturer_id: req.user.id, course_id: req.params.courseId },
+    });
+    if (!deleted) return error(res, 'Assignment not found', 404);
+    return success(res, null, 'Course assignment removed');
   } catch (err) {
     next(err);
   }

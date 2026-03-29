@@ -1,6 +1,6 @@
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
-const { User, Announcement, Attachment, Comment, AnnouncementView, LevelCorrectionRequest } = require('../models');
+const { User, Announcement, Attachment, Comment, AnnouncementView, LevelCorrectionRequest, Course, LecturerCourse } = require('../models');
 const { success, error } = require('../utils/response');
 const emailService = require('../services/email.service');
 const { deleteFile } = require('../services/file.service');
@@ -41,6 +41,57 @@ exports.createRep = async (req, res, next) => {
 
     const created = await User.findByPk(rep.id, { attributes: SAFE_ATTRIBUTES });
     return success(res, { user: created }, 'Course rep created and credentials emailed', 201);
+  } catch (err) {
+    next(err);
+  }
+};
+
+// POST /admin/users/create-lecturer
+exports.createLecturer = async (req, res, next) => {
+  try {
+    const { full_name, email, position, course_ids } = req.body;
+
+    const existing = await User.findOne({ where: { email } });
+    if (existing) return error(res, 'Email already registered', 409);
+
+    const tempPassword = crypto.randomBytes(8).toString('hex');
+    const password_hash = await bcrypt.hash(tempPassword, 12);
+
+    const lecturer = await User.create({
+      full_name,
+      email,
+      password_hash,
+      role: 'lecturer',
+      position: position || null,
+      is_verified: true,
+      must_reset_password: true,
+    });
+
+    // Assign courses if provided
+    if (Array.isArray(course_ids) && course_ids.length > 0) {
+      const now = new Date();
+      const assignments = course_ids.map((course_id) => ({
+        id: crypto.randomUUID(),
+        lecturer_id: lecturer.id,
+        course_id,
+        created_at: now,
+        updated_at: now,
+      }));
+      await LecturerCourse.bulkCreate(assignments, { ignoreDuplicates: true });
+    }
+
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(`[DEV] Lecturer credentials for ${email} — temp password: ${tempPassword}`);
+    }
+    emailService.sendLecturerCredentials(email, full_name, tempPassword).catch((err) => {
+      console.error('[Email] Failed to send lecturer credentials:', err.message);
+    });
+
+    const created = await User.findByPk(lecturer.id, {
+      attributes: SAFE_ATTRIBUTES,
+      include: [{ model: Course, as: 'courses', through: { attributes: [] } }],
+    });
+    return success(res, { user: created }, 'Lecturer created and credentials emailed', 201);
   } catch (err) {
     next(err);
   }

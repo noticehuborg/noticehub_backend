@@ -28,13 +28,20 @@ module.exports = (sequelize, DataTypes) => {
         allowNull: false,
         defaultValue: 'general',
       },
+      course: {
+        type: DataTypes.STRING(150),
+        allowNull: true,
+        comment: 'Course name this announcement belongs to, e.g. "Data Structures"',
+      },
       program: {
-        type: DataTypes.ENUM('Bsc. Computer Science', 'Bsc. Information Technology'),
+        type: DataTypes.STRING(150),
         allowNull: false,
+        comment: 'References programs.name — enforced at controller level, not DB FK',
       },
       level: {
-        type: DataTypes.ENUM('100', '200', '300', '400'),
+        type: DataTypes.STRING(10),
         allowNull: false,
+        comment: 'Level in multiples of 100 (e.g. "100"–"600")',
       },
       status: {
         type: DataTypes.ENUM('draft', 'published', 'archived'),
@@ -46,6 +53,10 @@ module.exports = (sequelize, DataTypes) => {
         defaultValue: false,
       },
       pinned_at: {
+        type: DataTypes.DATE,
+        allowNull: true,
+      },
+      published_at: {
         type: DataTypes.DATE,
         allowNull: true,
       },

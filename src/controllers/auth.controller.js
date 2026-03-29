@@ -1,7 +1,7 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
-const { User } = require('../models');
+const { User, Program } = require('../models');
 const { success, error } = require('../utils/response');
 const emailService = require('../services/email.service');
 const jwtConfig = require('../config/jwt');
@@ -20,10 +20,52 @@ const signTokens = (userId) => {
   return { accessToken, refreshToken };
 };
 
+// GET /auth/programs  (public — no auth required)
+exports.getPrograms = async (req, res, next) => {
+  try {
+    const programs = await Program.findAll({
+      where: { is_active: true },
+      order: [['name', 'ASC']],
+      attributes: ['id', 'name', 'short_name', 'max_level'],
+    });
+
+    const data = programs.map((p) => {
+      const levels = [];
+      for (let l = 100; l <= p.max_level; l += 100) {
+        levels.push(String(l));
+      }
+      return {
+        value: p.name,
+        label: p.short_name || p.name,
+        levels,
+      };
+    });
+
+    return success(res, { programs: data });
+  } catch (err) {
+    next(err);
+  }
+};
+
 // POST /auth/register
 exports.register = async (req, res, next) => {
   try {
     const { full_name, email, password, program, level } = req.body;
+
+    // Validate program exists
+    const programRecord = await Program.findOne({ where: { name: program, is_active: true } });
+    if (!programRecord) return error(res, 'Invalid program selected.', 400);
+
+    // Validate level is within the program's allowed range
+    const levelNum = parseInt(level, 10);
+    if (
+      isNaN(levelNum) ||
+      levelNum < 100 ||
+      levelNum > programRecord.max_level ||
+      levelNum % 100 !== 0
+    ) {
+      return error(res, `Level ${level} is not valid for ${program}. Maximum level is ${programRecord.max_level}.`, 400);
+    }
 
     const existing = await User.findOne({ where: { email } });
     if (existing) return error(res, 'Email already registered', 409);
@@ -49,10 +91,13 @@ exports.register = async (req, res, next) => {
       console.log(`[DEV] OTP for ${email}: ${otp_code}`);
     }
 
-    // Send email non-blocking — don't fail registration if SMTP is misconfigured
-    emailService.sendOtp(email, otp_code).catch((err) => {
-      console.error('[Email] Failed to send OTP:', err.message);
-    });
+    // OTP is critical — await it so the user gets a proper error if SMTP is broken
+    try {
+      await emailService.sendOtp(email, otp_code);
+    } catch (emailErr) {
+      console.error('[Email] Failed to send OTP:', emailErr.message);
+      return error(res, 'Account created but we could not send the verification email. Please use Resend OTP.', 500);
+    }
 
     // Send welcome notification non-blocking
     notificationService.notifyWelcome(user.id);
@@ -79,6 +124,16 @@ exports.login = async (req, res, next) => {
     user.refresh_token_hash = await bcrypt.hash(refreshToken, 10);
     await user.save();
 
+    // Eager-load courses for lecturers so the frontend has them immediately on login
+    let courses = [];
+    if (user.role === 'lecturer') {
+      const { Course } = require('../models');
+      await user.reload({
+        include: [{ model: Course, as: 'courses', through: { attributes: [] }, where: { is_active: true }, required: false }],
+      });
+      courses = user.courses ?? [];
+    }
+
     return success(res, {
       access_token: accessToken,
       refresh_token: refreshToken,
@@ -91,6 +146,8 @@ exports.login = async (req, res, next) => {
         program: user.program,
         level: user.level,
         avatar_url: user.avatar_url,
+        position: user.position ?? null,
+        courses,
       },
     });
   } catch (err) {
@@ -137,9 +194,12 @@ exports.resendOtp = async (req, res, next) => {
     if (process.env.NODE_ENV !== 'production') {
       console.log(`[DEV] Resend OTP for ${email}: ${otp_code}`);
     }
-    emailService.sendOtp(email, otp_code).catch((err) => {
-      console.error('[Email] Failed to resend OTP:', err.message);
-    });
+    try {
+      await emailService.sendOtp(email, otp_code);
+    } catch (emailErr) {
+      console.error('[Email] Failed to resend OTP:', emailErr.message);
+      return error(res, 'Could not send OTP email. Please try again shortly.', 500);
+    }
 
     return success(res, null, 'OTP resent successfully');
   } catch (err) {
@@ -166,9 +226,12 @@ exports.forgotPassword = async (req, res, next) => {
     if (process.env.NODE_ENV !== 'production') {
       console.log(`[DEV] Password reset URL for ${email}: ${resetUrl}`);
     }
-    emailService.sendPasswordReset(email, resetUrl).catch((err) => {
-      console.error('[Email] Failed to send reset email:', err.message);
-    });
+    try {
+      await emailService.sendPasswordReset(email, resetUrl);
+    } catch (emailErr) {
+      console.error('[Email] Failed to send password reset:', emailErr.message);
+      // Still return 200 — don't reveal whether the email exists or SMTP is broken
+    }
 
     return success(res, null, 'If that email exists, a reset link has been sent.');
   } catch (err) {

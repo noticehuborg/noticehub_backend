@@ -5,10 +5,12 @@ const createSchema = Joi.object({
   title: Joi.string().max(255).required(),
   body: Joi.string().required(),
   category: Joi.string().valid(...ANNOUNCEMENT_CATEGORIES).required(),
+  // Course name tag e.g. "Data Structures" — optional, auto-omitted for general notices
+  course: Joi.string().max(150).optional().allow(null, ''),
   status: Joi.string().valid('draft', 'published').default('draft'),
   deadline: Joi.string().isoDate().optional().allow(null, ''),
   useful_links: Joi.string().optional().allow(null, ''), // JSON string of array
-  // Only relevant for admin; course_rep values are overridden server-side
+  // Only relevant for admin; course_rep + lecturer values are overridden server-side
   program: Joi.string().valid(...PROGRAMS).optional(),
   level: Joi.string().valid(...LEVELS).optional(),
 });
@@ -17,6 +19,7 @@ const updateSchema = Joi.object({
   title: Joi.string().max(255).optional(),
   body: Joi.string().optional(),
   category: Joi.string().valid(...ANNOUNCEMENT_CATEGORIES).optional(),
+  course: Joi.string().max(150).optional().allow(null, ''),
   deadline: Joi.string().isoDate().optional().allow(null, ''),
   useful_links: Joi.string().optional().allow(null, ''),
   remove_attachment_ids: Joi.alternatives()

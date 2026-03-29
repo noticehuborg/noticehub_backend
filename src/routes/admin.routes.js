@@ -9,6 +9,7 @@ const v = require('../utils/validators/user.validator');
 router.use(authenticate, authorize('admin'));
 
 router.post('/users/create-rep', validate(v.createRep), adminController.createRep);
+router.post('/users/create-lecturer', validate(v.createLecturer), adminController.createLecturer);
 router.get('/stats', adminController.getStats);
 router.get('/level-corrections', adminController.listLevelCorrections);
 router.patch('/level-corrections/:id', adminController.actionLevelCorrection);

@@ -25,9 +25,12 @@ exports.createResourceSchema = Joi.object({
     .integer()
     .optional(),
 
-  // 🎯 Level filter
-   level: Joi.number()
-    .valid(100, 200, 300, 400)
+  // 🎯 Level filter (ignored for lecturers — derived from course)
+  level: Joi.number()
+    .valid(100, 200, 300, 400, 500, 600)
     .optional()
     .allow(null),
+
+  // 📚 Required for lecturers — program+level derived from selected course
+  course_id: Joi.string().uuid().optional().allow(null, ''),
 });

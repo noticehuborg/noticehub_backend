@@ -6,7 +6,6 @@ const env = process.env.NODE_ENV || 'development';
 
 // Import your config file correctly
 const config = require(path.join(__dirname, '../config/database.js'))[env];
-console.log('Database Config:', config);
 
 const db = {};
 

@@ -1,4 +1,4 @@
-const { Resource, User } = require('../models');
+const { Resource, User, Course } = require('../models');
 const { streamUpload, deleteFile } = require('../services/file.service');
 const { success, error } = require('../utils/response');
 
@@ -7,9 +7,20 @@ const RESOURCE_FOLDER = 'noticehub/resources';
 // GET /resources
 exports.getResources = async (req, res, next) => {
   try {
-    const { type, level } = req.query;
+    const { type, level, mine } = req.query;
+    const where = {};
 
-    const where = { program: req.user.program };
+    if (req.user.role === 'lecturer') {
+      // Lecturers only ever see their own uploads
+      where.author_id = req.user.id;
+    } else if (mine === 'true') {
+      // Course rep "My Uploads" view
+      where.author_id = req.user.id;
+    } else {
+      // Students and course_rep default view — all resources for their program
+      where.program = req.user.program;
+    }
+
     if (type) where.type = type;
     if (level) where.level = parseInt(level);
 
@@ -28,13 +39,23 @@ exports.getResources = async (req, res, next) => {
 // POST /resources
 exports.createResource = async (req, res, next) => {
   try {
-    const { title, description, type, url, member_count, target_level } = req.body;
+    const { title, description, type, url, member_count, target_level, course_id } = req.body;
+
+    // Resolve program + level — default to user's own program/level for course_rep
+    let program = req.user.program;
+    let level = req.user.level ?? null; // course_rep: use their own level by default
+
+    if (req.user.role === 'lecturer') {
+      if (!course_id) return error(res, 'Lecturers must select a course when uploading a resource', 400);
+      const course = await Course.findByPk(course_id);
+      if (!course) return error(res, 'Course not found', 404);
+      program = course.program;
+      level = parseInt(course.level);
+    }
 
     let fileData = {};
-
     if (type === 'file') {
       if (!req.file) return error(res, 'File is required for type=file', 400);
-
       const uploaded = await streamUpload(req.file.buffer, RESOURCE_FOLDER);
       fileData = {
         file_url: uploaded.secure_url,
@@ -50,8 +71,8 @@ exports.createResource = async (req, res, next) => {
       type,
       url: type !== 'file' ? url : null,
       member_count: member_count || null,
-      program: req.user.program,
-      level: target_level ? parseInt(target_level) : null,
+      program,
+      level,
       author_id: req.user.id,
       ...fileData,
     });

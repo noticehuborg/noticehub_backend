@@ -24,17 +24,19 @@ module.exports = (sequelize, DataTypes) => {
         allowNull: false,
       },
       role: {
-        type: DataTypes.ENUM('student', 'course_rep', 'admin'),
+        type: DataTypes.ENUM('student', 'course_rep', 'lecturer', 'admin'),
         allowNull: false,
         defaultValue: 'student',
       },
       program: {
-        type: DataTypes.ENUM('Bsc. Computer Science', 'Bsc. Information Technology'),
+        type: DataTypes.STRING(150),
         allowNull: true,
+        comment: 'References programs.name — enforced at controller level, not DB FK',
       },
       level: {
-        type: DataTypes.ENUM('100', '200', '300', '400'),
+        type: DataTypes.STRING(10),
         allowNull: true,
+        comment: 'Level in multiples of 100 (e.g. "100"–"600")',
       },
       avatar_url: {
         type: DataTypes.TEXT,
@@ -55,6 +57,11 @@ module.exports = (sequelize, DataTypes) => {
       is_active: {
         type: DataTypes.BOOLEAN,
         defaultValue: true,
+      },
+      position: {
+        type: DataTypes.STRING(100),
+        allowNull: true,
+        comment: 'Academic/admin position, e.g. "Senior Lecturer", "Head of Department"',
       },
       must_reset_password: {
         type: DataTypes.BOOLEAN,
@@ -90,6 +97,12 @@ module.exports = (sequelize, DataTypes) => {
     User.hasMany(db.Notification, { foreignKey: 'user_id', as: 'notifications' });
     User.hasMany(db.AnnouncementView, { foreignKey: 'user_id', as: 'views' });
     User.hasMany(db.LevelCorrectionRequest, { foreignKey: 'user_id', as: 'levelCorrectionRequests' });
+    User.belongsToMany(db.Course, {
+      through: db.LecturerCourse,
+      foreignKey: 'lecturer_id',
+      otherKey: 'course_id',
+      as: 'courses',
+    });
   };
 
   return User;

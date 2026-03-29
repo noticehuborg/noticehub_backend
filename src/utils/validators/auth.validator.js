@@ -5,7 +5,9 @@ const register = Joi.object({
   full_name: Joi.string().min(2).max(150).required(),
   email: Joi.string().email().required(),
   password: Joi.string().min(8).required(),
-  program: Joi.string().valid(...PROGRAMS).required(),
+  // Program existence + level-range validation is done in the controller
+  // (programs are dynamic DB records, so we just check format here)
+  program: Joi.string().min(2).max(150).required(),
   level: Joi.string().valid(...LEVELS).required(),
 });
 

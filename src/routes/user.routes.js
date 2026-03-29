@@ -15,6 +15,11 @@ router.patch('/me', upload.single('avatar'), validate(v.updateMe), userControlle
 router.patch('/me/password', validate(v.changePassword), userController.changePassword);
 router.post('/me/level-correction', validate(v.levelCorrectionRequest), userController.requestLevelCorrection);
 
+// Lecturer course assignments
+router.get('/me/courses', userController.getMyCourses);
+router.post('/me/courses', userController.addMyCourse);
+router.delete('/me/courses/:courseId', userController.removeMyCourse);
+
 // Admin-only user management
 router.get('/', authorize('admin'), userController.listUsers);
 router.get('/:id', authorize('admin'), userController.getUserById);

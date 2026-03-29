@@ -1,23 +1,26 @@
 const { Notification, User } = require('../models');
+const { Op } = require('sequelize');
 
 /**
- * Fan-out a notification to all eligible students for an announcement.
- * Eligible: role=student, same program and level as the announcement.
+ * Fan-out a notification to all eligible users for an announcement.
+ * Eligible: students and course_reps with the same program and level.
+ * Does NOT notify the announcement author.
  * Non-blocking — failures do not propagate to the caller.
  */
 const fanOut = async (announcement, type) => {
   try {
-    const students = await User.findAll({
+    const recipients = await User.findAll({
       where: {
-        role: 'student',
+        role: { [Op.in]: ['student', 'course_rep'] },
         program: announcement.program,
         level: announcement.level,
         is_active: true,
+        id: { [Op.ne]: announcement.author_id }, // don't notify the author
       },
       attributes: ['id'],
     });
 
-    if (!students.length) return;
+    if (!recipients.length) return;
 
     const title =
       type === 'deadline_warning'
@@ -31,8 +34,8 @@ const fanOut = async (announcement, type) => {
         ? announcement.body.slice(0, 200)
         : null;
 
-    const rows = students.map((student) => ({
-      user_id: student.id,
+    const rows = recipients.map((r) => ({
+      user_id: r.id,
       type,
       title,
       body,
@@ -67,6 +70,27 @@ const notifyReply = async (parentComment, replier) => {
 };
 
 /**
+ * Notify the announcement author that someone commented on their post.
+ * Only fires if the commenter is not the author.
+ * Non-blocking.
+ */
+const notifyNewComment = async (announcement, commenter) => {
+  try {
+    if (announcement.author_id === commenter.id) return;
+
+    await Notification.create({
+      user_id: announcement.author_id,
+      type: 'comment_reply',
+      title: `New comment on "${announcement.title}"`,
+      body: `${commenter.full_name} commented on your announcement.`,
+      reference_id: announcement.id,
+    });
+  } catch (err) {
+    console.error('[notificationService.notifyNewComment] Error:', err.message);
+  }
+};
+
+/**
  * Send a welcome notification to a newly registered user.
  * Non-blocking.
  */
@@ -83,4 +107,4 @@ const notifyWelcome = async (userId) => {
   }
 };
 
-module.exports = { fanOut, notifyReply, notifyWelcome };
+module.exports = { fanOut, notifyReply, notifyNewComment, notifyWelcome };

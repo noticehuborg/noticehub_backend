@@ -1,5 +1,5 @@
 const { Op } = require('sequelize');
-const { Announcement, Attachment, AnnouncementView, Comment, User } = require('../models');
+const { Announcement, Attachment, AnnouncementView, Comment, User, Course } = require('../models');
 const { streamUpload, deleteFile } = require('../services/file.service');
 const notificationService = require('../services/notification.service');
 const { success, error } = require('../utils/response');
@@ -36,6 +36,40 @@ const withCommentCount = async (announcement) => {
   return { ...announcement.toJSON(), comment_count: count };
 };
 
+// ─── Deadlines ───────────────────────────────────────────────────────────────
+
+const getDeadlines = async (req, res, next) => {
+  try {
+    const { page = 1, limit = 20 } = req.query;
+    const offset = (parseInt(page) - 1) * parseInt(limit);
+
+    const { count, rows } = await Announcement.findAndCountAll({
+      where: {
+        program: req.user.program,
+        level: req.user.level,
+        status: 'published',
+        deadline: { [Op.gte]: new Date() },
+      },
+      include: [
+        { model: User, as: 'author', attributes: ['id', 'full_name', 'avatar_url', 'role', 'position'] },
+        { model: Attachment, as: 'attachments' },
+      ],
+      order: [['deadline', 'ASC']],
+      limit: parseInt(limit),
+      offset,
+    });
+
+    return success(res, {
+      announcements: rows,
+      total: count,
+      page: parseInt(page),
+      totalPages: Math.ceil(count / parseInt(limit)),
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
 // ─── Feed ────────────────────────────────────────────────────────────────────
 
 const getFeed = async (req, res, next) => {
@@ -50,7 +84,7 @@ const getFeed = async (req, res, next) => {
         status: 'published',
       },
       include: [
-        { model: User, as: 'author', attributes: ['id', 'full_name', 'avatar_url'] },
+        { model: User, as: 'author', attributes: ['id', 'full_name', 'avatar_url', 'role', 'position'] },
         { model: Attachment, as: 'attachments' },
       ],
       order: [
@@ -62,8 +96,9 @@ const getFeed = async (req, res, next) => {
       offset,
     });
 
+    const data = await Promise.all(rows.map(withCommentCount));
     return success(res, {
-      announcements: rows,
+      announcements: data,
       total: count,
       page: parseInt(page),
       totalPages: Math.ceil(count / parseInt(limit)),
@@ -107,7 +142,7 @@ const searchAnnouncements = async (req, res, next) => {
     const { count, rows } = await Announcement.findAndCountAll({
       where,
       include: [
-        { model: User, as: 'author', attributes: ['id', 'full_name', 'avatar_url'] },
+        { model: User, as: 'author', attributes: ['id', 'full_name', 'avatar_url', 'role', 'position'] },
         { model: Attachment, as: 'attachments' },
       ],
       order,
@@ -144,7 +179,10 @@ const getMyPosts = async (req, res, next) => {
 
     const { count, rows } = await Announcement.findAndCountAll({
       where,
-      include: [{ model: Attachment, as: 'attachments' }],
+      include: [
+        { model: User, as: 'author', attributes: ['id', 'full_name', 'avatar_url', 'role', 'position'] },
+        { model: Attachment, as: 'attachments' },
+      ],
       order: [['created_at', 'DESC']],
       limit: parseInt(limit),
       offset,
@@ -169,7 +207,7 @@ const getAnnouncement = async (req, res, next) => {
   try {
     const announcement = await Announcement.findByPk(req.params.id, {
       include: [
-        { model: User, as: 'author', attributes: ['id', 'full_name', 'avatar_url'] },
+        { model: User, as: 'author', attributes: ['id', 'full_name', 'avatar_url', 'role', 'position'] },
         { model: Attachment, as: 'attachments' },
       ],
     });
@@ -200,16 +238,29 @@ const createAnnouncement = async (req, res, next) => {
       return error(res, `Maximum ${MAX_ATTACHMENTS} attachments allowed`, 400);
     }
 
-    const { title, body, category, status = 'draft', deadline, useful_links } = req.body;
+    const { title, body, category, course_id, status = 'draft', deadline, useful_links } = req.body;
 
-    // For course_rep: lock program and level from JWT; ignore any client-supplied values
-    let program, level;
+    // For course_rep: lock program and level from their own profile.
+    // For lecturers: program + level come from the selected course record.
+    // Admins can supply program/level explicitly.
+    let program, level, resolvedCourse;
+
     if (req.user.role === 'course_rep') {
       program = req.user.program;
       level = req.user.level;
+      resolvedCourse = null;
+    } else if (req.user.role === 'lecturer') {
+      if (!course_id) return error(res, 'Lecturers must select a course when posting an announcement', 400);
+      const courseRecord = await Course.findByPk(course_id);
+      if (!courseRecord) return error(res, 'Course not found', 404);
+      program = courseRecord.program;
+      level = courseRecord.level;
+      resolvedCourse = `${courseRecord.code} ${courseRecord.name}`;
     } else {
+      // admin
       program = req.body.program;
       level = req.body.level;
+      resolvedCourse = req.body.course || null;
     }
 
     const announcement = await Announcement.create({
@@ -217,6 +268,7 @@ const createAnnouncement = async (req, res, next) => {
       title,
       body,
       category,
+      course: resolvedCourse,
       program,
       level,
       status,
@@ -263,7 +315,7 @@ const updateAnnouncement = async (req, res, next) => {
       return error(res, 'Forbidden', 403);
     }
 
-    const { title, body, category, deadline, useful_links, remove_attachment_ids } = req.body;
+    const { title, body, category, course, deadline, useful_links, status, remove_attachment_ids } = req.body;
     const files = req.files || [];
 
     // Remove specific attachments
@@ -285,13 +337,23 @@ const updateAnnouncement = async (req, res, next) => {
       await Attachment.bulkCreate(attachmentRows);
     }
 
+    const validStatuses = ['draft', 'published'];
+    const isFirstPublish = status === 'published' && announcement.status !== 'published';
     await announcement.update({
       ...(title !== undefined && { title }),
       ...(body !== undefined && { body }),
       ...(category !== undefined && { category }),
+      ...(course !== undefined && { course: course || null }),
       ...(deadline !== undefined && { deadline: deadline || null }),
       ...(useful_links !== undefined && { useful_links: JSON.parse(useful_links) }),
+      ...(status && validStatuses.includes(status) && { status }),
+      ...(isFirstPublish && !announcement.published_at && { published_at: new Date() }),
     });
+
+    // Fan-out notification when a draft is published via update
+    if (isFirstPublish) {
+      notificationService.fanOut(announcement, 'new_announcement');
+    }
 
     const data = await Announcement.findByPk(announcement.id, {
       include: [{ model: Attachment, as: 'attachments' }],
@@ -322,7 +384,10 @@ const publishAnnouncement = async (req, res, next) => {
       return error(res, 'Announcement is already published', 400);
     }
 
-    await announcement.update({ status: 'published' });
+    await announcement.update({
+      status: 'published',
+      published_at: announcement.published_at ?? new Date(),
+    });
 
     notificationService.fanOut(announcement, 'new_announcement');
 
@@ -349,6 +414,16 @@ const togglePin = async (req, res, next) => {
     }
 
     const newPinned = !announcement.is_pinned;
+
+    if (newPinned) {
+      const pinnedCount = await Announcement.count({
+        where: { program: announcement.program, level: announcement.level, is_pinned: true },
+      });
+      if (pinnedCount >= 3) {
+        return error(res, 'Pin limit reached. Unpin an existing notice before pinning a new one.', 400);
+      }
+    }
+
     await announcement.update({
       is_pinned: newPinned,
       pinned_at: newPinned ? new Date() : null,
@@ -389,7 +464,37 @@ const deleteAnnouncement = async (req, res, next) => {
   }
 };
 
+// ─── All Attachments (for Resources > Files tab) ─────────────────────────────
+
+const getAttachments = async (req, res, next) => {
+  try {
+    const attachments = await Attachment.findAll({
+      include: [
+        {
+          model: Announcement,
+          as: 'announcement',
+          attributes: ['id', 'title', 'program', 'level'],
+          where: {
+            program: req.user.program,
+            level: req.user.level,
+            status: 'published',
+          },
+          include: [
+            { model: User, as: 'author', attributes: ['id', 'full_name'] },
+          ],
+        },
+      ],
+      order: [['created_at', 'DESC']],
+    });
+
+    return success(res, { attachments });
+  } catch (err) {
+    next(err);
+  }
+};
+
 module.exports = {
+  getDeadlines,
   getFeed,
   searchAnnouncements,
   getMyPosts,
@@ -399,4 +504,5 @@ module.exports = {
   publishAnnouncement,
   togglePin,
   deleteAnnouncement,
+  getAttachments,
 };

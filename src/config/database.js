@@ -2,11 +2,7 @@ require('dotenv').config();
 
 module.exports = {
   development: {
-    username: process.env.DB_USER,
-    password: process.env.DB_PASSWORD,
-    database: process.env.DB_NAME,
-    host: process.env.DB_HOST,
-    port: parseInt(process.env.DB_PORT, 10) || 5432,
+    use_env_variable: 'DATABASE_URL',
     dialect: 'postgres',
     logging: false,
     dialectOptions: {
@@ -14,8 +10,6 @@ module.exports = {
         require: true,
         rejectUnauthorized: false,
       },
-      keepAlive: true,
-      connectTimeout: 30000,
     },
     pool: {
       max: 5,
@@ -25,11 +19,7 @@ module.exports = {
     },
   },
   production: {
-    username: process.env.DB_USER,
-    password: process.env.DB_PASSWORD,
-    database: process.env.DB_NAME,
-    host: process.env.DB_HOST,
-    port: parseInt(process.env.DB_PORT, 10) || 5432,
+    use_env_variable: 'DATABASE_URL',
     dialect: 'postgres',
     logging: false,
     dialectOptions: {
@@ -37,8 +27,6 @@ module.exports = {
         require: true,
         rejectUnauthorized: false,
       },
-      keepAlive: true,
-      connectTimeout: 30000,
     },
     pool: {
       max: 5,
